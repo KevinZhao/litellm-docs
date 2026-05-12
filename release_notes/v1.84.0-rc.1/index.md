@@ -112,10 +112,6 @@ This release tightens a number of defaults across auth, ingress, callbacks, MCP,
 - **Who is affected:** Any flow that relied on the blanket bypass to either add an admin to an available team without admin privileges, or to mutate `team_member_permissions` from a non-admin context.
 - **Restore prior behavior:** None — perform admin-scoped operations with an admin key.
 
-#### Guardrail modification permission gates on key presence
-- **What changed:** The guardrail-modification authz check in `auth_checks.py` now gates on intent (whether the key is present in the request) rather than payload truthiness. Some previously-accepted shapes will now 403.
-- **Restore prior behavior:** None — flow updates required for non-admin callers that previously slipped past on falsy payloads.
-
 #### Untrusted root control fields are stripped from client requests
 - **What changed:** `_UNTRUSTED_ROOT_CONTROL_FIELDS` in `litellm_pre_call_utils.py` includes `mock_response`, `mock_tool_calls`, redaction-bypass controls, and a few others. They are stripped from client requests unless the calling key/team carries `allow_client_mock_response: true` (for `mock_response` / `mock_tool_calls`) or the corresponding admin-opt-in metadata for the redaction bypass. Pillar guardrail caching headers and Bedrock dynamic evaluation overrides are also filtered when not explicitly allowed.
 - **Who is affected:** Tests and tooling that pass `mock_response` / `mock_tool_calls` in `extra_body` to short-circuit completions.
