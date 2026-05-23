@@ -313,11 +313,16 @@ Set these to `true` only for ephemeral/CI environments.
 
 | Output | Description |
 |---|---|
-| `alb_url` | ALB DNS name (access LiteLLM here) |
-| `alb_arn` | ALB ARN |
+| `alb_url` | ALB URL (access LiteLLM here) |
+| `alb_dns_name` | Raw ALB DNS name |
 | `master_key_secret_arn` | Secrets Manager ARN for `LITELLM_MASTER_KEY` |
+| `db_master_password_secret_arn` | Secrets Manager ARN for the Aurora master password (bootstrap only) |
+| `aurora_writer_endpoint` | Aurora writer endpoint (used as `DATABASE_HOST`) |
+| `aurora_reader_endpoint` | Aurora reader endpoint (used as `DATABASE_HOST_READ_REPLICA`) |
+| `s3_bucket` | S3 bucket name (also set as `S3_BUCKET_NAME` env var) |
+| `redis_endpoint` | ElastiCache Redis primary endpoint |
 | `db_bootstrap_sql` | Break-glass SQL to re-create the IAM DB user |
-| `migration_run_command` | `aws ecs run-task` command to re-run migrations |
+| `migration_run_command` | Full `aws ecs run-task` command to re-run migrations |
 
 ## Variable reference
 

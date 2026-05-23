@@ -344,8 +344,9 @@ Set these to `false` / `true` respectively only for ephemeral/CI environments.
 When `lb_domains` is set, the stack provisions a Google-managed SSL certificate. Managed certs sit in `PROVISIONING` for 15–60 minutes after first apply while DNS propagates:
 
 ```bash
+# The cert is named <tenant>-litellm-<env>-cert
 gcloud compute ssl-certificates describe \
-  $(terraform output -raw ssl_certificate_name) \
+  "$(terraform show -json | jq -r '.values.root_module.resources[] | select(.type == "google_compute_managed_ssl_certificate") | .values.name')" \
   --format="value(managed.status)"
 ```
 
@@ -355,10 +356,13 @@ gcloud compute ssl-certificates describe \
 |---|---|
 | `lb_url` | LB URL (access LiteLLM here) |
 | `lb_ip` | Anycast IP of the load balancer |
-| `master_key_secret_id` | Secret Manager ID for `LITELLM_MASTER_KEY` |
-| `gateway_url` | Direct Cloud Run URL for the gateway service |
-| `backend_url` | Direct Cloud Run URL for the backend service |
-| `ui_url` | Direct Cloud Run URL for the UI service |
+| `master_key_secret_id` | Secret Manager resource ID for `LITELLM_MASTER_KEY` |
+| `db_password_secret_id` | Secret Manager resource ID for the Cloud SQL app-user password |
+| `gateway_service_url` | Direct Cloud Run URL for the gateway (bypasses LB) |
+| `backend_service_url` | Direct Cloud Run URL for the backend (bypasses LB) |
+| `ui_service_url` | Direct Cloud Run URL for the UI (bypasses LB) |
+| `gcs_bucket` | GCS bucket name (also set as `GCS_BUCKET_NAME` env var) |
+| `redis_endpoint` | Memorystore Redis endpoint |
 | `migration_run_command` | `gcloud run jobs execute` command to re-run migrations |
 
 ## Variable reference
