@@ -119,6 +119,7 @@ general_settings:
   store_prompts_in_spend_logs: boolean
   forward_client_headers_to_llm_api: boolean
   disable_spend_logs: boolean  # turn off writing each transaction to the db
+  disable_daily_spend_aggregation: boolean  # skip DailyUser/Team/Tag/Org/EndUser/Agent aggregation tables (prevents Redis OOM when Usage dashboard is not needed)
   disable_master_key_return: boolean  # turn off returning master key on UI (checked on '/user/info' endpoint)
   disable_retry_on_max_parallel_request_limit_error: boolean  # turn off retries when max parallel request limit is reached
   disable_reset_budget: boolean  # turn off reset budget scheduled task
@@ -232,6 +233,7 @@ router_settings:
 |------|------|-------------|
 | completion_model | string | The model to use for all completions, overriding any `model` specified in the request |
 | disable_spend_logs | boolean | If true, turns off writing each transaction to the database |
+| disable_daily_spend_aggregation | boolean | If true, skips writing to the DailyUser/Team/Tag/Org/EndUser/Agent spend aggregation tables. Prevents Redis buffer key (`litellm_daily_*_spend_update_buffer`) growth when the Usage dashboard is not needed. Key/user/team balance updates continue to work normally. |
 | disable_spend_updates | boolean | If true, turns off all spend updates to the DB. Including key/user/team spend updates. |
 | disable_master_key_return | boolean | If true, turns off returning master key on UI. (checked on '/user/info' endpoint) |
 | disable_retry_on_max_parallel_request_limit_error | boolean | If true, turns off retries when max parallel request limit is reached |

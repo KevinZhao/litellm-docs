@@ -70,6 +70,33 @@ When disabling error logs (`disable_error_logs: True`):
 - You **will** continue seeing error logs in your application logs and any other logging integrations you are using
 
 
+## Disable Daily Spend Aggregation
+
+If you do **not** use the LiteLLM Usage dashboard (DailyUser/Team/Tag/Org/EndUser/Agent spend tables) and are hitting Redis OOM errors due to growing `litellm_daily_*_spend_update_buffer` keys, you can set `disable_daily_spend_aggregation: true` to stop all daily aggregation writes.
+
+```yaml
+general_settings:
+  disable_daily_spend_aggregation: true   # Skip DailyUser/Team/Tag/Org/EndUser/Agent spend tables
+```
+
+### What is the impact?
+
+When `disable_daily_spend_aggregation: true`:
+- The six Redis buffer keys (`litellm_daily_user_spend_update_buffer`, `litellm_daily_team_spend_update_buffer`, `litellm_daily_tag_spend_update_buffer`, `litellm_daily_org_spend_update_buffer`, `litellm_daily_end_user_spend_update_buffer`, `litellm_daily_agent_spend_update_buffer`) are **never written** — preventing Redis OOM.
+- The `update_daily_tag_spend_job` background scheduler is **not registered** at startup.
+- Key, user, and team **balance updates** (budget enforcement) continue to work normally.
+- You **will not** be able to view the Usage analytics dashboard (daily breakdowns by user/team/tag/org).
+- `disable_spend_logs: true` and `disable_daily_spend_aggregation: true` can be combined for maximum write reduction.
+
+:::tip When to use this
+
+Use `disable_daily_spend_aggregation: true` when:
+- You have `disable_spend_logs: true` set (suppresses per-request rows) but still see Redis buffer growth.
+- You do not use the LiteLLM Usage/Analytics dashboard.
+- Your deployment processes high request volumes and the daily aggregation Redis buffers are causing memory pressure.
+
+:::
+
 ## Migrating Databases 
 
 If you need to migrate Databases the following Tables should be copied to ensure continuation of services and no downtime
