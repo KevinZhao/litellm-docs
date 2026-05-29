@@ -84,23 +84,115 @@ We recommend running **1 Uvicorn worker per pod** and scaling out horizontally w
 CMD ["--port", "4000", "--config", "./proxy_server_config.yaml", "--num_workers", "1"]
 ```
 
-> **Optional:** If you observe gradual memory growth under sustained load, consider recycling workers after a fixed number of requests to mitigate leaks.
-> You can configure this either via CLI or environment variable:
+### Gunicorn vs. Uvicorn: when to use each
+
+| Scenario | Recommendation | Reason |
+|---|---|---|
+| Kubernetes with HPA | 1 Uvicorn worker per pod (`--num_workers 1`) | Lowest latency, predictable memory footprint, scales horizontally |
+| Non-Kubernetes (VM / bare metal) | Gunicorn (`--run_gunicorn --num_workers $(nproc)`) | Gunicorn manages the worker process group; crashed workers are automatically respawned |
+| Worker recycling needed (`--max_requests_before_restart`) | Gunicorn | Gunicorn's `max_requests` recycles workers one at a time, avoiding request spikes. Uvicorn's equivalent is less battle-tested. |
+
+### Recycling workers to cap memory growth
+
+If you observe gradual memory growth under sustained load, recycle workers after a fixed number of requests.
 
 ```shell
-# CLI
-CMD ["--port", "4000", "--config", "./proxy_server_config.yaml", "--num_workers", "$(nproc)", "--max_requests_before_restart", "10000"]
+# Uvicorn (Kubernetes, 1 worker per pod)
+CMD ["--port", "4000", "--config", "./proxy_server_config.yaml", "--num_workers", "1", "--max_requests_before_restart", "10000"]
 
-# or ENV (for deployment manifests / containers)
+# Gunicorn (non-Kubernetes, multiple workers per host)
+CMD ["--port", "4000", "--config", "./proxy_server_config.yaml", "--run_gunicorn", "--num_workers", "$(nproc)", "--max_requests_before_restart", "10000"]
+```
+
+You can also set this via environment variable instead of a CLI flag:
+
+```shell
 export MAX_REQUESTS_BEFORE_RESTART=10000
 ```
 
-> **Tip:** When using `--max_requests_before_restart`, the `--run_gunicorn` flag is more stable and mature as it uses Gunicorn's battle-tested worker recycling mechanism instead of Uvicorn's implementation.
+:::tip Multi-worker thundering herd
+On non-Kubernetes hosts where you run multiple Gunicorn workers, all workers that started at roughly the same time will hit their `max_requests` limit at roughly the same time, causing a brief throughput dip. To stagger restarts, Gunicorn supports a `max_requests_jitter` option. Set it with a custom Gunicorn config file (e.g., `max_requests_jitter = 1000`) alongside `--run_gunicorn`. On a single-worker-per-pod Kubernetes deployment this is not an issue.
+:::
 
-```shell
-# Use Gunicorn for more stable worker recycling
-CMD ["--port", "4000", "--config", "./proxy_server_config.yaml", "--num_workers", "$(nproc)", "--run_gunicorn", "--max_requests_before_restart", "10000"]
+### Hitless restarts on Kubernetes
+
+A "hitless" (zero-downtime) restart means no request is dropped when a pod is replaced. Three things need to work together:
+
+**1. Rolling update strategy**
+
+Configure your Deployment so new pods are ready before old ones terminate:
+
+```yaml
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1        # spin up 1 extra pod before terminating any
+    maxUnavailable: 0  # never remove a pod until a healthy replacement is ready
 ```
+
+**2. Probe configuration**
+
+Kubernetes removes a pod from the endpoint slice only after its readiness probe fails. Make sure the probes are tuned so the pod stops receiving traffic before `SIGTERM` arrives.
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /health/readiness
+    port: 4000
+  failureThreshold: 120  # 120 × 5 s = 10 min max startup time
+  periodSeconds: 5
+  timeoutSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /health/readiness
+    port: 4000
+  initialDelaySeconds: 0
+  periodSeconds: 15
+  timeoutSeconds: 15
+  failureThreshold: 4    # marks unready after ~60 s of DB / cache unavailability
+
+livenessProbe:
+  httpGet:
+    path: /health/liveliness
+    port: 4000
+  initialDelaySeconds: 0
+  periodSeconds: 35
+  timeoutSeconds: 15
+  failureThreshold: 3    # kills pod only after ~105 s of liveness failure; set higher (5–10) if your LLM calls are long
+```
+
+**3. preStop hook and termination grace period**
+
+When Kubernetes decides to terminate a pod, it sends `SIGTERM` and simultaneously removes the pod from the endpoint slice; there is a propagation delay of a few seconds before the load balancer stops routing to it. The `preStop` sleep bridges that gap.
+
+```yaml
+containers:
+  - name: litellm
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "15"]  # wait for endpoint slice propagation before SIGTERM is delivered
+terminationGracePeriodSeconds: 60    # must be > preStop sleep + longest expected in-flight request
+```
+
+The termination sequence with this configuration:
+
+```
+Pod marked for deletion
+    │
+    ├─► preStop sleep (15 s) — load balancer drains the pod from rotation
+    │
+    ▼  (SIGTERM delivered after preStop completes)
+Uvicorn / Gunicorn begins shutdown
+    │
+    └─► terminationGracePeriodSeconds (60 s) — in-flight requests finish
+            └─► SIGKILL if process has not exited by the deadline
+```
+
+:::info Streaming requests
+If you serve long-running streaming requests, increase `terminationGracePeriodSeconds` beyond your p99 request duration. With a 15 s preStop sleep and 60 s termination grace period, any stream running longer than ~45 s will be killed on pod restart.
+:::
 
 
 ## 4. Use Redis 'port','host', 'password'. NOT 'redis_url'
