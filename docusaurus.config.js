@@ -135,8 +135,8 @@ const config = {
   url: process.env.DOCS_SITE_URL || 'https://docs.litellm.ai/',
   baseUrl: process.env.DOCS_BASE_URL || '/',
 
-  onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+  onBrokenLinks: process.env.DOCS_ON_BROKEN_LINKS || 'warn',
+  onBrokenMarkdownLinks: process.env.DOCS_ON_BROKEN_MARKDOWN_LINKS || 'warn',
 
   // Exposed to client pages (e.g. /versions) to build links to each version.
   customFields: {
